@@ -1,0 +1,379 @@
+<div>
+    <p id="loading-opencv-msg">Loading the Opencv ...</p>
+    <input type="file" id="file-upload"/>
+</div>
+
+<div class="row-align">
+    <img id="src-image" src="" alt="">
+  </div>
+
+  <div class="row-align" id="original"></div>
+  <div class="row-align" id="medianBlur"></div>
+  <div class="row-align" id="dilate"></div>
+  <div class="row-align" id="gaussianblur"></div>
+
+  <script src="https://cdn.jsdelivr.net/gh/wallat/compiled-opencvjs/v4.2.0/opencv.js" async onload="onOpenCvReady();" type="text/javascript"></script>
+
+<style>
+.row-align {
+  display: flex;
+  flex-direction: row;
+  margin-top: 10px;
+}
+.row-align img,
+.row-align canvas {
+  width: calc(25% - 6px);
+  margin-right: 10px;
+}
+
+canvas {
+  width: 100%;
+  box-sizing: border-box;
+  margin-right: 5px;
+}
+
+
+</style>
+
+<script>
+(function() {
+
+	var fileUploadEl = document.getElementById('file-upload'),
+		srcImgEl = document.getElementById('src-image')
+
+	fileUploadEl.addEventListener("change", function (e) {
+	  srcImgEl.src = URL.createObjectURL(e.target.files[0]);
+	}, false);
+
+	/*document.getElementById('loading-opencv-msg').addEventListener("DOMNodeRemoved", function (e) {
+		srcImgEl.src = "file:///D:/DOCS/DOWNLOADS/DEV/HBSAD/prod-dark.jpeg";
+		srcImgEl.src = URL.createObjectURL(e.target.files[0]);
+	}, false);*/
+
+	srcImgEl.onload = function () {
+		dsts = [];
+		var src = cv.imread(srcImgEl); // load the image from <img>
+
+		//Gray Scale
+		var gry = new cv.Mat();dsts.push(gry);
+		var cnt = new cv.Mat();dsts.push(cnt);
+		var cnnorg = new cv.Mat();dsts.push(cnnorg);
+		gry = gray_scale(src);
+		cnnorg = canny(gry, 'canvas-Canny')
+		cnt = contours(cnnorg, 'findContours', cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+		add_canvas("original", src, 'canvas-orig-src');
+		add_canvas("original", gry, 'canvas-orig-gray');
+		add_canvas("original", cnnorg, 'canvas-orig-cnn');
+		add_canvas("original", cnt, 'canvas-orig-cnt');
+
+		//Median Blur
+		var mbl = new cv.Mat();dsts.push(mbl);
+		var canmbl = new cv.Mat();dsts.push(canmbl);
+		mbl = medianBlur(gry, 'canvas-medianblur');
+		canmbl = canny(mbl, 'canvas-Canny')
+		cnt = contours(canmbl, 'findContours', cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+		add_canvas("medianBlur", gry, 'canvas-mbl-gry');
+		add_canvas("medianBlur", mbl, 'canvas-mbl-mbl');
+		add_canvas("medianBlur", canmbl, 'canvas-mbl-canmbl');
+		add_canvas("medianBlur", cnt, 'canvas-mbl-cnt');
+
+		//Dilate
+		var dlt = new cv.Mat();dsts.push(dlt);
+		var candlt = new cv.Mat();dsts.push(candlt);
+		dlt = dilate(gry, 'canvas-dilate');
+		candlt = canny(dlt, 'canvas-Canny2');
+		cntdlt = contours(candlt, 'findContours', cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+		add_canvas("dilate", gry, 'canvas-dlt-gry');
+		add_canvas("dilate", dlt, 'canvas-dlt-dlt');
+		add_canvas("dilate", candlt, 'canvas-dlt-candlt');
+		add_canvas("dilate", cntdlt, 'canvas-dlt-cnt');
+
+		//Gaussian Blur
+		var gbl = new cv.Mat();dsts.push(gbl);
+		var cangbl = new cv.Mat();dsts.push(cangbl);
+		gbl = gaussianBlur(gry, 'canvas-gaussianblur');
+		cangbl = canny(gbl, 'canvas-Canny3');
+		cnt = contours(cangbl, 'findContours', cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+		add_canvas("gaussianblur", gry, 'canvas-gbl-gry');
+		add_canvas("gaussianblur", gbl, 'canvas-gbl-gbl');
+		add_canvas("gaussianblur", cangbl, 'canvas-gbl-cangbl');
+		add_canvas("gaussianblur", cnt, 'canvas-gbl-cnt');
+
+		//threshold
+		var tsd = new cv.Mat();dsts.push(tsd);
+		var cantsd = new cv.Mat();dsts.push(cantsd);
+		// loop through cv properties
+		for(propertyName in cv){
+			// find threshold
+			if(propertyName.indexOf('THRESH_') >= 0){
+				var Output = document.body;
+				var div = document.createElement("div");
+				div.className = "row-align";
+				div.id="threshold-"+propertyName;
+				Output.appendChild(div);
+				
+				let thresholdType = cv[propertyName];// access threshold type
+				tsd = threshold(gry, thresholdType);// perform threshold
+				cv.putText(tsd, propertyName, {x:20,y:20}, cv.FONT_HERSHEY_SIMPLEX, 0.7, [255,0,0,0], 3);// render debugging text to see which result uses which threshold type
+
+				cantsd = canny(tsd, 'canvas-Canny3');
+				cnt = contours(cantsd, 'findContours', cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+				
+				// write Mat to Canvas
+				add_canvas(div.id, gry, 'canvas-tsd-gry'+propertyName);
+				add_canvas(div.id, tsd, 'canvas-tsd-tsd'+propertyName);
+				add_canvas(div.id, cantsd, 'canvas-tsd-cantsd'+propertyName);
+				add_canvas(div.id, cnt, 'canvas-tsd-cnt'+propertyName);
+			}
+		}
+
+		//------------------------- Contours --------------------------
+		var Output = document.body;
+		var canvas = document.createElement("canvas");
+		canvas.id = "contour1";
+		Output.appendChild(canvas);
+
+		points=get_Contour_points(candlt, null);
+		//plotPoints(canvas, points);
+
+		//------------------------ Crop Image --------------------------
+
+		crop_image("canvas-orig-src", canvas.id, points)
+
+	
+		//------------------------- Functions --------------------------
+
+		function gray_scale(src){
+			var dst = new cv.Mat();
+			cv.cvtColor(src, dst, cv.COLOR_RGB2GRAY, 0);
+			return dst;
+		}
+
+		function medianBlur(src){
+			var dst = new cv.Mat();
+			cv.medianBlur(src, dst, 5)
+			return dst
+		}
+
+		function canny(src){
+			var dst = new cv.Mat();
+			cv.Canny(src, dst, 50, 100, 3, false); // You can try more different parameters
+			return dst
+		}
+
+		function dilate(src){
+			var dst = new cv.Mat();
+			const kernel = cv.getStructuringElement(cv.MORPH_RECT,new cv.Size(5,5));
+			cv.dilate(src, dst, kernel)
+			return dst;
+		}
+
+		function gaussianBlur(src){
+			var dst = new cv.Mat();
+			let ksize = new cv.Size(5, 5);
+			cv.GaussianBlur(src, dst, ksize, 0, 0, cv.BORDER_DEFAULT)
+			return dst;
+		}
+
+		function threshold (src, flag){
+			var dst = new cv.Mat();
+			cv.threshold(src, dst, 177, 200, cv.THRESH_BINARY_INV);
+			return dst;
+		}
+
+		function contours(src, objectid, mode, method){
+			let dst = cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC3);
+			let contours = new cv.MatVector();
+			let hierarchy = new cv.Mat();
+			
+			// You can try more different parameters
+			cv.findContours(src, contours, hierarchy, mode, method);
+			// draw contours with random Scalar
+			for (let i = 0; i < contours.size(); ++i) {
+				let color = new cv.Scalar(Math.round(Math.random() * 255), Math.round(Math.random() * 255),
+										Math.round(Math.random() * 255));
+				cv.drawContours(dst, contours, i, color, 1, cv.LINE_8, hierarchy, 100);
+			}
+			return dst;
+		}
+
+		function add_canvas(parentid, dst, canvasid){
+			var Output = document.getElementById(parentid);
+			var canvas = document.createElement("canvas");
+			canvas.id = canvasid;
+			Output.appendChild(canvas);
+			cv.imshow(canvas.id, dst);
+		}
+
+		// cleanup Mat instances
+		while(dsts.length > 0) dsts.shift().delete();
+
+
+		function get_Contour_points(src, canvas_id){
+
+			let dst = cv.Mat.zeros(src.rows, src.cols, cv.CV_8UC3);
+			let contours = new cv.MatVector();
+			let hierarchy = new cv.Mat();
+			let color = new cv.Scalar(0, 255, 0); 
+			let foundContour = new cv.MatVector();
+
+			cv.findContours(src, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+			//Get area for all contours so we can find the biggest
+			var largest_area=0;
+        	var largest_contour_index=0; 
+			let sortableContours = [];
+			for (let i = 0; i < contours.size(); i++) {
+				let cnt = contours.get(i);
+				let area = cv.contourArea(cnt, false);
+				let perim = cv.arcLength(cnt, false);
+
+				if(area>largest_area){
+					largest_area=area;
+					largest_contour_index=i;
+					sortableContours.push({ areaSize: area, perimiterSize: perim, contour: cnt });
+				}
+
+			}
+
+			//Ensure the top area contour has 4 corners (NOTE: This is not a perfect science and likely needs more attention)
+			let approx = new cv.Mat();
+			cv.approxPolyDP(sortableContours.at(-1).contour, approx, .05 * sortableContours.at(-1).perimiterSize, true);
+
+			if (approx.rows == 4) {
+				console.log('Found a 4-corner approx');
+				foundContour = approx;
+			}
+			else{
+				console.log('No 4-corner large contour!');
+				return;
+			}
+
+			//Find the corners
+			let corner1 = new cv.Point(foundContour.data32S[0], foundContour.data32S[1]);
+			let corner2 = new cv.Point(foundContour.data32S[2], foundContour.data32S[3]);
+			let corner3 = new cv.Point(foundContour.data32S[4], foundContour.data32S[5]);
+			let corner4 = new cv.Point(foundContour.data32S[6], foundContour.data32S[7]);
+
+			//Order the corners
+			let cornerArray = new cv.MatVector();
+			cornerArray = [{ corner: corner1 }, { corner: corner2 }, { corner: corner3 }, { corner: corner4 }];
+			cornerArray.sort((item1, item2) => { //Sort by Y position (to get top-down)
+			return (item1.corner.y < item2.corner.y) ? -1 : (item1.corner.y > item2.corner.y) ? 1 : 0; }).slice(0, 5);
+
+			cv.drawContours(dst, contours, largest_contour_index, color, 1, cv.LINE_8, hierarchy, 100);
+			if(canvas_id !=null) cv.imshow(canvas_id, dst);
+
+			return cornerArray;
+
+		}
+
+		function plotPoints(canvas, ps){
+			const ctx = canvas.getContext('2d')
+			ctx.strokeStyle = 'red'
+
+			ctx.beginPath();
+			ctx.moveTo(ps[0].corner.x, ps[0].corner.y);
+			ctx.lineTo(ps[1].corner.x, ps[1].corner.y);
+			ctx.lineTo(ps[2].corner.x, ps[2].corner.y);
+			ctx.lineTo(ps[3].corner.x, ps[3].corner.y);
+			ctx.lineTo(ps[0].corner.x, ps[0].corner.y);
+			ctx.closePath();
+			ctx.stroke();
+		}
+
+
+		function crop_image(src_id, canvas_id, ps){
+			var mycanvas = document.getElementById(canvas_id);
+    		ctx = mycanvas.getContext('2d');
+
+			ctx.strokeStyle = 'red'
+
+			line1 = new Line(ctx);
+			line2 = new Line(ctx)
+			line3 = new Line(ctx)
+			line4 = new Line(ctx)
+
+			/// update line object and draw it
+			line1.x1 = ps[0].corner.x;
+			line1.y1 = ps[0].corner.y;
+			line1.x2 = ps[1].corner.x;
+			line1.y2 = ps[1].corner.y;
+
+			line2.x1 = line1.x2;
+			line2.y1 = line1.y2;
+			line2.x2 = ps[2].corner.x;
+			line2.y2 = ps[2].corner.y;
+
+			line3.x1 = line2.x2;
+			line3.y1 = line2.y2;
+			line3.x2 = ps[3].corner.x;
+			line3.y2 = ps[3].corner.y;
+
+			line4.x1 = line3.x2;
+			line4.y1 = line3.y2;
+			line4.x2 = line1.x1;
+			line4.y2 = line1.y1;
+			
+			// ctx.beginPath();
+			// line1.draw();
+			// line2.draw();
+			// line3.draw();
+			// line4.draw();
+			// ctx.stroke();	
+
+			ctx.beginPath();
+			ctx.moveTo(ps[0].corner.x, ps[0].corner.y);
+			ctx.lineTo(ps[1].corner.x, ps[1].corner.y);
+			ctx.lineTo(ps[2].corner.x, ps[2].corner.y);
+			ctx.lineTo(ps[3].corner.x, ps[3].corner.y);
+			ctx.lineTo(ps[0].corner.x, ps[0].corner.y);
+			ctx.closePath();
+			ctx.stroke();		
+
+			ctx.clip();
+
+			ctx.drawImage(document.getElementById(src_id),0,0);
+
+			// canvas = document.getElementById(canvas_id),
+    		// ctx = canvas.getContext('2d');
+
+			// ctx.drawImage(mycanvas,0,0,canvas.width,canvas.height);
+			//ctx.fillStyle = "red";
+			//ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+			//ctx.drawImage(canvas,0,0);
+
+			
+			}
+
+			/// This lets us define a custom line object which self-draws
+			function Line(ctx) {
+
+				var me = this;
+
+				this.x1 = 0;
+				this.x2 = 0;
+				this.y1 = 0;
+				this.y2 = 0;
+
+				/// call this method to update line        
+				this.draw = function() {
+					ctx.beginPath();
+					ctx.moveTo(me.x1, me.y1);
+					ctx.lineTo(me.x2, me.y2);
+					ctx.stroke();
+				}
+			}
+
+
+	}
+
+	// opencv loaded?
+	window.onOpenCvReady = function () {
+		document.getElementById('loading-opencv-msg').remove();
+	}
+
+
+})()
+</script>
